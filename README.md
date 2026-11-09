@@ -18,13 +18,13 @@
 
 ## Структура репозитория
 
-TournamentPlatform/
-├── docs/
-│   ├── PLAN.md
-│   └── ARCHITECTURE.md
-├── .gitignore
-├── README.md
-└── TournamentPlatform.slnx
+TournamentPlatform/ <br>
+├── docs/ <br>
+│   ├── PLAN.md <br>
+│   └── ARCHITECTURE.md <br>
+├── .gitignore <br>
+├── README.md <br>
+└── TournamentPlatform.slnx <br>
 
 ## План работ
 
