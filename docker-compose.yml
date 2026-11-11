@@ -1,0 +1,91 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: src/ApiGateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ReverseProxy__Clusters__players__Destinations__local__Address: http://players:8080/
+      ReverseProxy__Clusters__tournaments__Destinations__local__Address: http://tournaments:8080/
+      ReverseProxy__Clusters__matches__Destinations__local__Address: http://matches:8080/
+      ReverseProxy__Clusters__rating__Destinations__local__Address: http://rating:8080/
+    depends_on:
+      - players
+      - tournaments
+      - matches
+      - rating
+
+  players:
+    build:
+      context: .
+      dockerfile: src/PlayersService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+    expose:
+      - "8080"
+
+  tournaments:
+    build:
+      context: .
+      dockerfile: src/TournamentsService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+    expose:
+      - "8080"
+
+  matches:
+    build:
+      context: .
+      dockerfile: src/MatchesService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+    expose:
+      - "8080"
+
+  rating:
+    build:
+      context: .
+      dockerfile: src/RatingService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+    expose:
+      - "8080"
+
+  postgres:
+    image: postgres:17.6
+    environment:
+      POSTGRES_DB: tournament_platform
+      POSTGRES_USER: tournament
+      POSTGRES_PASSWORD: tournament_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tournament -d tournament_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    environment:
+      RABBITMQ_DEFAULT_USER: tournament
+      RABBITMQ_DEFAULT_PASS: tournament_dev
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
