@@ -1,2 +1,11 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MatchesService/MatchesService.csproj" />
+    <Project Path="src/PlayersService/PlayersService.csproj" />
+    <Project Path="src/RatingService/RatingService.csproj" />
+    <Project Path="src/TournamentsService/TournamentsService.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TournamentPlatform.Tests/TournamentPlatform.Tests.csproj" />
+  </Folder>
 </Solution>
