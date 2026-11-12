@@ -7,15 +7,32 @@ services:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      ReverseProxy__Clusters__identity__Destinations__local__Address: http://identity:8080/
       ReverseProxy__Clusters__players__Destinations__local__Address: http://players:8080/
       ReverseProxy__Clusters__tournaments__Destinations__local__Address: http://tournaments:8080/
       ReverseProxy__Clusters__matches__Destinations__local__Address: http://matches:8080/
       ReverseProxy__Clusters__rating__Destinations__local__Address: http://rating:8080/
     depends_on:
+      - identity
       - players
       - tournaments
       - matches
       - rating
+
+  identity:
+    build:
+      context: .
+      dockerfile: src/IdentityService/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Identity: Host=postgres;Port=5432;Database=tournament_platform;Username=tournament;Password=tournament_dev
+      Jwt__Key: local-development-only-signing-key-not-for-production-12345
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
 
   players:
     build:

@@ -1,6 +1,6 @@
 # TournamentPlatform
 
-TournamentPlatform - платформа для организации спортивных и киберспортивных турниров. Она предназначена для организаторов, игроков и зрителей: в целевой версии организаторы смогут проводить турниры, а участники и зрители — следить за матчами и рейтингами.
+TournamentPlatform - платформа для организации спортивных и киберспортивных турниров. Она предназначена для организаторов, игроков и зрителей.
 
 ## Технологический стек
 
@@ -17,11 +17,13 @@ TournamentPlatform - платформа для организации спорт
 ```mermaid
 flowchart LR
     Client[Клиент] --> Gateway[API Gateway :8080]
+    Gateway --> Identity[Identity Service]
     Gateway --> Players[Players Service]
     Gateway --> Tournaments[Tournaments Service]
     Gateway --> Matches[Matches Service]
     Gateway --> Rating[Rating Service]
-    Players -. пока не подключён .-> DB[(PostgreSQL :5432)]
+    Identity --> DB[(PostgreSQL :5432)]
+    Players -. пока не подключён .-> DB
     Matches -. пока не подключён .-> MQ[RabbitMQ :5672]
 ```
 
@@ -48,6 +50,7 @@ docker compose up --build
 | Компонент | Адрес с компьютера |
 |---|---|
 | API Gateway | `http://localhost:8080` |
+| Identity Service | `http://localhost:8081`|
 | PostgreSQL | `localhost:5432` |
 | RabbitMQ AMQP | `localhost:5672` |
 | RabbitMQ Management | `http://localhost:15672` |
@@ -63,6 +66,8 @@ GET http://localhost:8080/health
 
 Доступные маршруты:
 
+- `POST /api/v1/auth/register` — создать учётную запись и базовый профиль с email и уникальным никнеймом;
+- `POST /api/v1/auth/login` — войти по email или никнейму и получить JWT;
 - `GET /api/v1/players` — пустой список игроков;
 - `GET /api/v1/teams` — пустой список команд;
 - `GET /api/v1/tournaments` — пустой список турниров;
@@ -75,6 +80,8 @@ GET http://localhost:8080/health
 ### Уже работает
 
 - запуск API Gateway и четырёх ASP.NET Core сервисов через Docker Compose;
+- регистрация пользователя вместе с базовым профилем (email и никнейм), вход по email или никнейму с выдачей JWT;
+- хранение учётных записей и хэшей паролей в PostgreSQL через ASP.NET Core Identity;
 - маршрутизация запросов Gateway в сервисы;
 - проверки доступности сервисов через `/health`;
 - тестовые пустые ответы для списков игроков, команд, турниров и рейтингов;
@@ -82,17 +89,17 @@ GET http://localhost:8080/health
 
 ### В планах
 
-- регистрация и управление игроками и командами;
+- расширение профиля игрока и управление командами;
 - создание турниров и регистрация участников;
 - генерация олимпийских, круговых и швейцарских турниров;
 - управление матчами и результатами;
 - расчёт рейтинга Эло и обновления в реальном времени;
-- подключение PostgreSQL и RabbitMQ к сервисам;
-- аутентификация, тесты, CI и клиентское приложение.
+- подключение RabbitMQ к сервисам;
+- тесты IdentityService и клиентское приложение.
 
 ## Тесты и CI
 
-В разработке
+Сборка и один интеграционный тест выполняются через GitHub Actions. Локально: `dotnet test`.
 
 ## Структура репозитория
 
@@ -103,6 +110,7 @@ GET http://localhost:8080/health
 │   └── PLAN.md               # План учебной практики
 ├── src/
 │   ├── ApiGateway/           # YARP API Gateway
+│   ├── IdentityService/      # Регистрация, вход и JWT
 │   ├── PlayersService/       # Игроки и команды
 │   ├── TournamentsService/   # Турниры
 │   ├── MatchesService/       # Матчи и результаты
@@ -119,4 +127,3 @@ GET http://localhost:8080/health
 
 ## Ограничения и планы развития
 
-Текущие сервисы — каркас: данные не сохраняются, учётные записи приложения отсутствуют, база данных и брокер сообщений пока не используются кодом сервисов.
