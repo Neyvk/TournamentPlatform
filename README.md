@@ -24,8 +24,10 @@ flowchart LR
     Gateway --> Rating[Rating Service]
     Identity --> IdentityDB[(БД tournament_identity)]
     Players --> PlayersDB[(БД tournament_players)]
+    Tournaments --> TournamentsDB[(БД tournament_tournaments)]
     IdentityDB --> DB[(PostgreSQL :5432)]
     PlayersDB --> DB
+    TournamentsDB --> DB
     Matches -. пока не подключён .-> MQ[RabbitMQ :5672]
 ```
 
@@ -76,7 +78,9 @@ GET http://localhost:8080/health
 - `DELETE /api/v1/teams/{teamId}/members/me` — выйти из команды;
 - `DELETE /api/v1/teams/{teamId}/members/{playerId}` — владелец исключает участника;
 - `DELETE /api/v1/teams/{teamId}` — владелец удаляет команду;
-- `GET /api/v1/tournaments` — пустой список турниров;
+- `POST /api/v1/tournaments` — создать турнир;
+- `GET /api/v1/tournaments` — список созданных турниров;
+- `GET /api/v1/tournaments/{id}` — получить турнир;
 - `GET /api/v1/matches/{matchId}` — заглушка, возвращает `404`;
 - `GET /api/v1/ratings/players/{playerId}` и `GET /api/v1/ratings/teams/{teamId}` — заглушки, возвращают `404`;
 - `GET /api/v1/ratings/leaderboard` — пустой список.
@@ -91,6 +95,7 @@ GET http://localhost:8080/health
 - маршрутизация запросов Gateway в сервисы;
 - проверки доступности сервисов через `/health`;
 - создание базового профиля игрока при регистрации и получение списка профилей;
+- создание турниров с форматом `olympic`, `round_robin` или `swiss` и числом игроков от 2 до 1024;
 - создание команд, вступление и выход участников, кик участника владельцем и удаление команды;
 - тестовые пустые ответы для списков турниров и рейтингов;
 - запуск PostgreSQL и RabbitMQ с локальными демонстрационными настройками.
@@ -98,7 +103,7 @@ GET http://localhost:8080/health
 ### В планах
 
 - расширение профиля игрока и команд (например, составы с ролями и ограничения участников);
-- создание турниров и регистрация участников;
+- регистрация участников и генерация турнирных сеток;
 - генерация олимпийских, круговых и швейцарских турниров;
 - управление матчами и результатами;
 - расчёт рейтинга Эло и обновления в реальном времени;

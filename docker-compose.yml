@@ -57,6 +57,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Tournaments: Host=postgres;Port=5432;Database=tournament_tournaments;Username=tournament;Password=tournament_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
     expose:
       - "8080"
 
