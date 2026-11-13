@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,8 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
     throw new InvalidOperationException("Jwt:Key must contain at least 32 bytes.");
 
 builder.Services.AddDbContext<AuthDbContext>(options => options.UseNpgsql(connectionString));
+var playersServiceBaseUrl = builder.Configuration["PlayersService:BaseUrl"] ?? "http://localhost:8082/";
+builder.Services.AddHttpClient("players", client => client.BaseAddress = new Uri(playersServiceBaseUrl));
 builder.Services.AddIdentityCore<IdentityUser>(options =>
 {
     options.User.RequireUniqueEmail = true;
@@ -61,7 +64,8 @@ app.MapGet("/health", () => Results.Ok(new { service = "identity", status = "hea
 
 app.MapPost("/api/v1/auth/register", async (
     RegisterRequest request,
-    UserManager<IdentityUser> users) =>
+    UserManager<IdentityUser> users,
+    IHttpClientFactory httpClientFactory) =>
 {
     if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
         return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -77,12 +81,34 @@ app.MapPost("/api/v1/auth/register", async (
 
     var email = request.Email.Trim();
     var nickname = request.Nickname.Trim();
+    if (nickname.Length > 80)
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["nickname"] = ["Никнейм должен содержать не более 80 символов."]
+        });
+
     var user = new IdentityUser { UserName = nickname, Email = email };
     var result = await users.CreateAsync(user, request.Password);
     if (!result.Succeeded)
         return Results.ValidationProblem(result.Errors
             .GroupBy(error => error.Code)
             .ToDictionary(group => group.Key, group => group.Select(error => error.Description).ToArray()));
+
+    try
+    {
+        var playersResponse = await httpClientFactory.CreateClient("players")
+            .PostAsJsonAsync("internal/player-profiles", new { userId = user.Id, nickname = user.UserName });
+        if (!playersResponse.IsSuccessStatusCode)
+        {
+            await users.DeleteAsync(user);
+            return Results.Problem("Не удалось создать профиль игрока.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+    catch (HttpRequestException)
+    {
+        await users.DeleteAsync(user);
+        return Results.Problem("Сервис игроков сейчас недоступен.", statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
 
     return Results.Created($"/api/v1/auth/users/{user.Id}", new
     {

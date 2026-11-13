@@ -26,8 +26,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__Identity: Host=postgres;Port=5432;Database=tournament_platform;Username=tournament;Password=tournament_dev
+      ConnectionStrings__Identity: Host=postgres;Port=5432;Database=tournament_identity;Username=tournament;Password=tournament_dev
       Jwt__Key: local-development-only-signing-key-not-for-production-12345
+      PlayersService__BaseUrl: http://players:8080/
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,8 +42,12 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Players: Host=postgres;Port=5432;Database=tournament_players;Username=tournament;Password=tournament_dev
     expose:
       - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   tournaments:
     build:
@@ -77,15 +82,16 @@ services:
   postgres:
     image: postgres:17.6
     environment:
-      POSTGRES_DB: tournament_platform
+      POSTGRES_DB: tournament_identity
       POSTGRES_USER: tournament
       POSTGRES_PASSWORD: tournament_dev
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tournament -d tournament_platform"]
+      test: ["CMD-SHELL", "pg_isready -U tournament -d tournament_identity"]
       interval: 5s
       timeout: 5s
       retries: 10

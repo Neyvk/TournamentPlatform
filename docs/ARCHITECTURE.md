@@ -340,28 +340,31 @@ RABBITMQ_PASSWORD=
 
 ### Игроки
 
-#### Создать профиль игрока
+#### Создать учётную запись и профиль игрока
 
-`POST /players` — роль `Player`.
+`POST /auth/register` — создаёт учётную запись и связанный с ней базовый профиль игрока.
 
 Запрос:
 
 ```json
 {
-  "displayName": "PlayerOne",
-  "gameProfile": "https://example.com/player/one"
+  "email": "player@example.com",
+  "nickname": "PlayerOne",
+  "password": "demo1234"
 }
 ```
 
-Ответ `201 Created` содержит профиль.
+При успешном запросе возвращается `201 Created`:
 
 ```json
 {
-  "id": "a72dc499-589a-4480-8f44-7b1d4bf1f433",
-  "displayName": "PlayerOne",
-  "gameProfile": "https://example.com/player/one"
+  "userId": "a72dc499-589a-4480-8f44-7b1d4bf1f433",
+  "nickname": "PlayerOne",
+  "email": "player@example.com"
 }
 ```
+
+После создания учётной записи Identity Service вызывает Players Service внутренним запросом `POST /internal/player-profiles` с `userId` и `nickname`. Этот внутренний маршрут не является клиентским API.
 
 #### Получить профиль игрока
 

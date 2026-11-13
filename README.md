@@ -22,8 +22,10 @@ flowchart LR
     Gateway --> Tournaments[Tournaments Service]
     Gateway --> Matches[Matches Service]
     Gateway --> Rating[Rating Service]
-    Identity --> DB[(PostgreSQL :5432)]
-    Players -. пока не подключён .-> DB
+    Identity --> IdentityDB[(БД tournament_identity)]
+    Players --> PlayersDB[(БД tournament_players)]
+    IdentityDB --> DB[(PostgreSQL :5432)]
+    PlayersDB --> DB
     Matches -. пока не подключён .-> MQ[RabbitMQ :5672]
 ```
 
@@ -50,11 +52,10 @@ docker compose up --build
 | Компонент | Адрес с компьютера |
 |---|---|
 | API Gateway | `http://localhost:8080` |
-| Identity Service | `http://localhost:8081`|
 | PostgreSQL | `localhost:5432` |
 | RabbitMQ AMQP | `localhost:5672` |
 | RabbitMQ Management | `http://localhost:15672` |
-| Players, Tournaments, Matches, Rating | только внутри Compose-сети, порт `8080` |
+| Identity, Players, Tournaments, Matches, Rating | только внутри Compose-сети, порт `8080` |
 
 ### Проверка запуска
 
@@ -68,7 +69,7 @@ GET http://localhost:8080/health
 
 - `POST /api/v1/auth/register` — создать учётную запись и базовый профиль с email и уникальным никнеймом;
 - `POST /api/v1/auth/login` — войти по email или никнейму и получить JWT;
-- `GET /api/v1/players` — пустой список игроков;
+- `GET /api/v1/players` — список зарегистрированных профилей игроков;
 - `GET /api/v1/teams` — пустой список команд;
 - `GET /api/v1/tournaments` — пустой список турниров;
 - `GET /api/v1/matches/{matchId}` — заглушка, возвращает `404`;
@@ -79,12 +80,13 @@ GET http://localhost:8080/health
 
 ### Уже работает
 
-- запуск API Gateway и четырёх ASP.NET Core сервисов через Docker Compose;
+- запуск API Gateway и пяти ASP.NET Core сервисов через Docker Compose;
 - регистрация пользователя вместе с базовым профилем (email и никнейм), вход по email или никнейму с выдачей JWT;
 - хранение учётных записей и хэшей паролей в PostgreSQL через ASP.NET Core Identity;
 - маршрутизация запросов Gateway в сервисы;
 - проверки доступности сервисов через `/health`;
-- тестовые пустые ответы для списков игроков, команд, турниров и рейтингов;
+- создание базового профиля игрока при регистрации и получение списка профилей;
+- тестовые пустые ответы для списков команд, турниров и рейтингов;
 - запуск PostgreSQL и RabbitMQ с локальными демонстрационными настройками.
 
 ### В планах
@@ -116,6 +118,8 @@ GET http://localhost:8080/health
 │   ├── MatchesService/       # Матчи и результаты
 │   └── RatingService/        # Рейтинги
 ├── docker-compose.yml        # Локальный запуск компонентов
+├── docker/
+│   └── postgres/             # Инициализация баз данных PostgreSQL
 ├── .dockerignore             # Исключения из контекста Docker-сборки
 ├── TournamentPlatform.slnx   # Решение .NET
 └── README.md
