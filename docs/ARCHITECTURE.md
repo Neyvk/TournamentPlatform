@@ -103,8 +103,11 @@ flowchart LR
 - `GET /api/v1/players`
 - `POST /api/v1/teams`
 - `GET /api/v1/teams/{teamId}`
+- `GET /api/v1/teams`
 - `POST /api/v1/teams/{teamId}/members`
+- `DELETE /api/v1/teams/{teamId}/members/me`
 - `DELETE /api/v1/teams/{teamId}/members/{playerId}`
+- `DELETE /api/v1/teams/{teamId}`
 
 **Своя БД:** игроки, команды, участники команд.
 
@@ -380,7 +383,7 @@ RABBITMQ_PASSWORD=
 
 #### Создать команду
 
-`POST /teams` — роль `Player`.
+`POST /teams` — требуется JWT зарегистрированного игрока. Создатель становится владельцем и первым участником команды.
 
 Запрос:
 
@@ -396,40 +399,32 @@ RABBITMQ_PASSWORD=
 {
   "id": "05fe6c05-8c49-4456-97bf-4ec700fbf25c",
   "name": "Team Alpha",
-  "members": []
+  "ownerId": "a72dc499-589a-4480-8f44-7b1d4bf1f433",
+  "members": ["a72dc499-589a-4480-8f44-7b1d4bf1f433"]
 }
 ```
 
 #### Получить команду и её состав
 
-`GET /teams/{teamId}` — публичный. Ответ `200 OK`:
+`GET /teams` возвращает список команд. `GET /teams/{teamId}` — публичный; ответ `200 OK`:
 
 ```json
 {
   "id": "05fe6c05-8c49-4456-97bf-4ec700fbf25c",
   "name": "Team Alpha",
-  "members": [
-    {
-      "playerId": "a72dc499-589a-4480-8f44-7b1d4bf1f433",
-      "displayName": "PlayerOne",
-      "role": "captain"
-    }
-  ]
+  "ownerId": "a72dc499-589a-4480-8f44-7b1d4bf1f433",
+  "members": ["a72dc499-589a-4480-8f44-7b1d4bf1f433"]
 }
 ```
 
-#### Изменить состав команды
+#### Вступить в команду, выйти и исключить участника
 
-- `POST /teams/{teamId}/members` — добавить игрока. Роль: владелец команды или `Admin`. Тело запроса: `{"playerId":"a72dc499-589a-4480-8f44-7b1d4bf1f433","role":"captain"}`. Успешный ответ: `204 No Content`.
-```json
-{
-    "playerId":"a72dc499-589a-4480-8f44-7b1d4bf1f433",
-    "role":"captain"
-}
-```
-- `DELETE /teams/{teamId}/members/{playerId}` — удалить игрока. Роль: владелец команды или `Admin`. Успешный ответ: `204 No Content`.
+- `POST /teams/{teamId}/members` — игрок с JWT вступает сам; тело запроса не требуется. Успешный ответ: `204 No Content`.
+- `DELETE /teams/{teamId}/members/me` — игрок выходит сам; успешный ответ: `204 No Content`. Владелец не может выйти, пока команда существует.
+- `DELETE /teams/{teamId}/members/{playerId}` — владелец исключает участника; успешный ответ: `204 No Content`. Владелец не может исключить себя.
+- `DELETE /teams/{teamId}` — владелец удаляет команду и её состав; успешный ответ: `204 No Content`.
 
-Если команда или игрок не найдены, возвращается `404`; если операция несовместима с текущим составом — `409`.
+Изменение состава и удаление команды требуют JWT. Если команда или участник не найдены, возвращается `404`; если операцию выполняет не владелец либо она запрещена текущим состоянием — `403` или `409`.
 
 ### Турниры
 
