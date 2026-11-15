@@ -1,6 +1,6 @@
 # TournamentPlatform
 
-TournamentPlatform - платформа для организации спортивных и киберспортивных турниров. Она предназначена для организаторов, игроков и зрителей.
+TournamentPlatform - платформа для организации спортивных и киберспортивных турниров между командами. Игроки создают команды и управляют составом; участниками турниров и рейтинга являются только команды.
 
 ## Технологический стек
 
@@ -25,9 +25,13 @@ flowchart LR
     Identity --> IdentityDB[(БД tournament_identity)]
     Players --> PlayersDB[(БД tournament_players)]
     Tournaments --> TournamentsDB[(БД tournament_tournaments)]
+    Matches --> MatchesDB[(БД tournament_matches)]
+    Rating --> RatingDB[(БД tournament_rating)]
     IdentityDB --> DB[(PostgreSQL :5432)]
     PlayersDB --> DB
     TournamentsDB --> DB
+    MatchesDB --> DB
+    RatingDB --> DB
     Matches -. пока не подключён .-> MQ[RabbitMQ :5672]
 ```
 
@@ -78,16 +82,16 @@ GET http://localhost:8080/health
 - `DELETE /api/v1/teams/{teamId}/members/me` — выйти из команды;
 - `DELETE /api/v1/teams/{teamId}/members/{playerId}` — владелец исключает участника;
 - `DELETE /api/v1/teams/{teamId}` — владелец удаляет команду;
-- `POST /api/v1/tournaments` — создать турнир (нужен JWT; создатель становится организатором);
+- `POST /api/v1/tournaments` — создать командный турнир (нужен JWT; создатель становится организатором);
 - `GET /api/v1/tournaments` — список созданных турниров;
 - `GET /api/v1/tournaments/{id}` — получить турнир;
-- `POST /api/v1/tournaments/{id}/participants` — записаться в турнир (нужен JWT; игрок может записать только себя);
+- `POST /api/v1/tournaments/{id}/teams` — зарегистрировать команду (нужен JWT владельца команды);
 - `POST /api/v1/tournaments/{id}/start` — запустить турнир (нужен JWT организатора);
 - `GET /api/v1/matches/tournaments/{id}` — получить матчи турнира;
 - `PUT /api/v1/matches/{matchId}/result` — сохранить счёт матча (нужен JWT организатора турнира) и продолжить турнир;
 - `GET /api/v1/matches/{matchId}` — получить матч;
-- `GET /api/v1/ratings/players/{playerId}` и `GET /api/v1/ratings/teams/{teamId}` — заглушки, возвращают `404`;
-- `GET /api/v1/ratings/leaderboard` — пустой список.
+- `GET /api/v1/ratings/teams/{teamId}` — получить рейтинг команды;
+- `GET /api/v1/ratings/leaderboard?limit=50` — таблица командных рейтингов.
 
 Для защищённых запросов передавай заголовок `Authorization: Bearer <accessToken>` с токеном из `/api/v1/auth/login`.
 
@@ -101,18 +105,18 @@ GET http://localhost:8080/health
 - маршрутизация запросов Gateway в сервисы;
 - проверки доступности сервисов через `/health`;
 - создание базового профиля игрока при регистрации и получение списка профилей;
-- создание турниров с форматом `olympic` (2–128 игроков), `round_robin` (2–16) или `swiss` (2–256, от 1 до 20 раундов);
+- создание турниров только для команд: `olympic` (2–128 команд), `round_robin` (2–16) или `swiss` (2–256, от 1 до 20 раундов);
 - создание команд, вступление и выход участников, кик участника владельцем и удаление команды;
 - генерация матчей кругового турнира, олимпийской и швейцарской сеток;
 - сохранение результата матча, создание следующих раундов в олимпийской и швейцарской сетках и завершение турнира;
 - проверка JWT и прав организатора при запуске турнира и фиксации результатов;
-- тестовые пустые ответы для рейтингов;
+- рейтинг Эло команд со стартовым значением 1000 и пересчётом после завершения матча;
 - запуск PostgreSQL и RabbitMQ с локальными демонстрационными настройками.
 
 ### В планах
 
 - расширение профиля игрока и команд (например, составы с ролями и ограничения участников);
-- расчёт рейтинга Эло и обновления в реальном времени;
+- обновления результатов и командного рейтинга в реальном времени;
 - подключение RabbitMQ к сервисам;
 - тесты IdentityService и клиентское приложение.
 

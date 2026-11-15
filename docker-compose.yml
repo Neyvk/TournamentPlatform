@@ -77,6 +77,7 @@ services:
       ConnectionStrings__Matches: Host=postgres;Port=5432;Database=tournament_matches;Username=tournament;Password=tournament_dev
       Jwt__Key: local-development-only-signing-key-not-for-production-12345
       TournamentsService__BaseUrl: http://tournaments:8080/
+      RatingService__BaseUrl: http://rating:8080/
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +91,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Rating: Host=postgres;Port=5432;Database=tournament_rating;Username=tournament;Password=tournament_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
     expose:
       - "8080"
 

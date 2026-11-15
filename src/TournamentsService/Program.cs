@@ -43,15 +43,24 @@ if (app.Environment.IsDevelopment())
     var db = scope.ServiceProvider.GetRequiredService<TournamentsDbContext>();
     await db.Database.EnsureCreatedAsync();
     await db.Database.ExecuteSqlRawAsync("""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Tournaments' AND column_name = 'MaxPlayers')
+               AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Tournaments' AND column_name = 'MaxTeams') THEN
+                ALTER TABLE "Tournaments" RENAME COLUMN "MaxPlayers" TO "MaxTeams";
+            END IF;
+        END $$;
+        ALTER TABLE "Tournaments" ADD COLUMN IF NOT EXISTS "MaxTeams" integer NOT NULL DEFAULT 2;
+        ALTER TABLE "Tournaments" ALTER COLUMN "MaxTeams" DROP DEFAULT;
         ALTER TABLE "Tournaments" ADD COLUMN IF NOT EXISTS "RoundCount" integer;
         ALTER TABLE "Tournaments" ADD COLUMN IF NOT EXISTS "Status" character varying(30) NOT NULL DEFAULT 'registration';
         ALTER TABLE "Tournaments" ADD COLUMN IF NOT EXISTS "OwnerId" character varying(450) NOT NULL DEFAULT 'legacy-unassigned';
         ALTER TABLE "Tournaments" ALTER COLUMN "OwnerId" DROP DEFAULT;
-        CREATE TABLE IF NOT EXISTS "TournamentParticipants" (
+        CREATE TABLE IF NOT EXISTS "TournamentTeams" (
             "TournamentId" uuid NOT NULL REFERENCES "Tournaments" ("Id") ON DELETE CASCADE,
-            "PlayerId" character varying(450) NOT NULL,
+            "TeamId" uuid NOT NULL,
             "RegisteredAt" timestamp with time zone NOT NULL,
-            CONSTRAINT "PK_TournamentParticipants" PRIMARY KEY ("TournamentId", "PlayerId")
+            CONSTRAINT "PK_TournamentTeams" PRIMARY KEY ("TournamentId", "TeamId")
         );
         """);
 }
@@ -70,27 +79,43 @@ app.MapGet("/api/v1/tournaments/{id:guid}", async (Guid id, TournamentsDbContext
     return tournament is null ? Results.NotFound() : Results.Ok(tournament);
 });
 
-app.MapPost("/api/v1/tournaments/{id:guid}/participants", async (
+app.MapPost("/api/v1/tournaments/{id:guid}/teams", async (
     Guid id, AddParticipantRequest request, HttpContext context, TournamentsDbContext db, IHttpClientFactory clients) =>
 {
     var tournament = await db.Tournaments.FindAsync(id);
     if (tournament is null) return Results.NotFound();
     if (tournament.Status != "registration") return Results.Conflict(new { error = "Регистрация закрыта." });
     var upperLimit = tournament.Format switch { "olympic" => 128, "round_robin" => 16, _ => 256 };
-    if (tournament.MaxPlayers > upperLimit) return Results.BadRequest(new { error = "Лимит участников превышает ограничение формата." });
-    if (await db.Participants.CountAsync(entry => entry.TournamentId == id) >= tournament.MaxPlayers)
-        return Results.Conflict(new { error = "Достигнут лимит игроков." });
-    var playerId = request.PlayerId?.Trim();
-    if (string.IsNullOrWhiteSpace(playerId)) return Results.BadRequest(new { error = "playerId обязателен." });
-    var authenticatedPlayerId = context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
-    if (authenticatedPlayerId != playerId) return Results.Forbid();
-    var response = await clients.CreateClient("players").GetAsync($"api/v1/players/{Uri.EscapeDataString(playerId)}");
-    if (!response.IsSuccessStatusCode) return Results.NotFound(new { error = "Профиль игрока не найден." });
-    if (await db.Participants.AnyAsync(entry => entry.TournamentId == id && entry.PlayerId == playerId))
-        return Results.Conflict(new { error = "Игрок уже зарегистрирован." });
-    db.Participants.Add(new TournamentParticipant { TournamentId = id, PlayerId = playerId, RegisteredAt = DateTimeOffset.UtcNow });
+    if (tournament.MaxTeams > upperLimit) return Results.BadRequest(new { error = "Лимит команд превышает ограничение формата." });
+    if (await db.Teams.CountAsync(entry => entry.TournamentId == id) >= tournament.MaxTeams)
+        return Results.Conflict(new { error = "Достигнут лимит команд." });
+    if (request.TeamId is null || request.TeamId == Guid.Empty)
+        return Results.BadRequest(new { error = "teamId обязателен." });
+    var userId = context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+    if (string.IsNullOrWhiteSpace(userId)) return Results.Unauthorized();
+
+    HttpResponseMessage teamResponse;
+    try
+    {
+        teamResponse = await clients.CreateClient("players").GetAsync($"api/v1/teams/{request.TeamId}");
+    }
+    catch (HttpRequestException)
+    {
+        return Results.Problem("Сервис команд сейчас недоступен.", statusCode: 503);
+    }
+    if (teamResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+        return Results.NotFound(new { error = "Команда не найдена." });
+    if (!teamResponse.IsSuccessStatusCode)
+        return Results.Problem("Не удалось проверить команду.", statusCode: 503);
+    var team = await teamResponse.Content.ReadFromJsonAsync<TeamInfo>();
+    if (team is null) return Results.Problem("Не удалось прочитать данные команды.", statusCode: 503);
+    if (team.OwnerId != userId) return Results.Forbid();
+    if (await db.Teams.AnyAsync(entry => entry.TournamentId == id && entry.TeamId == request.TeamId))
+        return Results.Conflict(new { error = "Команда уже зарегистрирована." });
+
+    db.Teams.Add(new TournamentTeam { TournamentId = id, TeamId = request.TeamId.Value, RegisteredAt = DateTimeOffset.UtcNow });
     await db.SaveChangesAsync();
-    return Results.Created($"/api/v1/tournaments/{id}/participants/{playerId}", new { tournamentId = id, playerId });
+    return Results.Created($"/api/v1/tournaments/{id}/teams/{request.TeamId}", new { tournamentId = id, teamId = request.TeamId });
 }).RequireAuthorization();
 
 app.MapPost("/api/v1/tournaments/{id:guid}/start", async (Guid id, HttpContext context, TournamentsDbContext db, IHttpClientFactory clients) =>
@@ -100,10 +125,10 @@ app.MapPost("/api/v1/tournaments/{id:guid}/start", async (Guid id, HttpContext c
     var userId = context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
     if (tournament.OwnerId != userId) return Results.Forbid();
     if (tournament.Status != "registration") return Results.Conflict(new { error = "Турнир уже запущен." });
-    var players = await db.Participants.Where(entry => entry.TournamentId == id).OrderBy(entry => entry.PlayerId).Select(entry => entry.PlayerId).ToListAsync();
-    if (players.Count < 2) return Results.Conflict(new { error = "Для запуска нужно минимум два игрока." });
-    var rounds = GenerateMatches(tournament.Format, players, tournament.RoundCount ?? 1);
-    var response = await clients.CreateClient("matches").PostAsJsonAsync("internal/matches/batch", new { tournamentId = id, rounds });
+    var teams = await db.Teams.Where(entry => entry.TournamentId == id).OrderBy(entry => entry.TeamId).Select(entry => entry.TeamId.ToString()).ToListAsync();
+    if (teams.Count < 2) return Results.Conflict(new { error = "Для запуска нужны минимум две команды." });
+    var rounds = GenerateMatches(tournament.Format, teams, tournament.RoundCount ?? 1);
+    var response = await clients.CreateClient("matches").PostAsJsonAsync("internal/matches/batch", new { tournamentId = id, participantType = "team", rounds });
     if (!response.IsSuccessStatusCode) return Results.Problem("Не удалось создать матчи.", statusCode: 503);
     tournament.Status = "in_progress";
     await db.SaveChangesAsync();
@@ -151,19 +176,20 @@ app.MapPost("/internal/tournaments/{id:guid}/matches/{matchId:guid}/completed", 
 
     if (tournament.Format == "olympic")
     {
-        var advancingPlayers = roundMatches.Where(match => match.WinnerId is not null)
+        var advancingTeams = roundMatches.Where(match => match.WinnerId is not null)
             .Select(match => match.WinnerId!).ToList();
-        if (advancingPlayers.Count <= 1)
+        if (advancingTeams.Count <= 1)
         {
             tournament.Status = "completed";
             await db.SaveChangesAsync();
             return Results.Ok(new { status = tournament.Status });
         }
 
-        var nextRound = PairOlympicRound(advancingPlayers);
+        var nextRound = PairOlympicRound(advancingTeams);
         var olympicCreateResponse = await clients.CreateClient("matches").PostAsJsonAsync("internal/matches/batch", new
         {
             tournamentId = id,
+            participantType = "team",
             startRound = currentRound + 1,
             rounds = new[] { nextRound }
         });
@@ -179,12 +205,13 @@ app.MapPost("/internal/tournaments/{id:guid}/matches/{matchId:guid}/completed", 
         return Results.Ok(new { status = tournament.Status });
     }
 
-    var swissPlayers = await db.Participants
-        .Where(entry => entry.TournamentId == id).Select(entry => entry.PlayerId).ToListAsync();
-    var swissRound = PairSwissRound(matches, swissPlayers);
+    var swissTeams = await db.Teams
+        .Where(entry => entry.TournamentId == id).Select(entry => entry.TeamId.ToString()).ToListAsync();
+    var swissRound = PairSwissRound(matches, swissTeams);
     var createResponse = await clients.CreateClient("matches").PostAsJsonAsync("internal/matches/batch", new
     {
         tournamentId = id,
+        participantType = "team",
         startRound = currentRound + 1,
         rounds = new[] { swissRound }
     });
@@ -204,8 +231,8 @@ app.MapPost("/api/v1/tournaments", async (CreateTournamentRequest request, HttpC
         return Results.BadRequest(new { error = "Формат должен быть olympic, round_robin или swiss." });
 
     var upperLimit = format switch { "olympic" => 128, "round_robin" => 16, _ => 256 };
-    if (request.MaxPlayers < 2 || request.MaxPlayers > upperLimit)
-        return Results.BadRequest(new { error = $"Для формата {format} допустимо от 2 до {upperLimit} игроков." });
+    if (request.MaxTeams < 2 || request.MaxTeams > upperLimit)
+        return Results.BadRequest(new { error = $"Для формата {format} допустимо от 2 до {upperLimit} команд." });
     if (format == "swiss" && (request.RoundCount is null or < 1 or > 20))
         return Results.BadRequest(new { error = "Для швейцарской системы укажите от 1 до 20 раундов." });
     if (format != "swiss" && request.RoundCount is not null)
@@ -219,7 +246,7 @@ app.MapPost("/api/v1/tournaments", async (CreateTournamentRequest request, HttpC
         Name = name,
         Format = format,
         OwnerId = ownerId,
-        MaxPlayers = request.MaxPlayers,
+        MaxTeams = request.MaxTeams,
         RoundCount = request.RoundCount,
         CreatedAt = DateTimeOffset.UtcNow
     };
@@ -230,12 +257,12 @@ app.MapPost("/api/v1/tournaments", async (CreateTournamentRequest request, HttpC
 
 app.Run();
 
-static List<List<MatchPair>> GenerateMatches(string format, List<string> players, int roundCount)
+static List<List<MatchPair>> GenerateMatches(string format, List<string> teams, int roundCount)
 {
     var rounds = new List<List<MatchPair>>();
     if (format == "round_robin")
     {
-        var rotating = players.Select((id, index) => (id, index)).ToList();
+        var rotating = teams.Select((id, index) => (id, index)).ToList();
         if (rotating.Count % 2 != 0) rotating.Add((null!, -1));
         for (var r = 0; r < rotating.Count - 1; r++)
         {
@@ -252,42 +279,42 @@ static List<List<MatchPair>> GenerateMatches(string format, List<string> players
     else if (format == "olympic")
     {
         var bracketSize = 1;
-        while (bracketSize < players.Count) bracketSize *= 2;
-        var byeCount = bracketSize - players.Count;
-        rounds.Add(players.Take(byeCount).Select(player => new MatchPair(player, null))
-            .Concat(PairOlympicRound(players.Skip(byeCount).ToList())).ToList());
+        while (bracketSize < teams.Count) bracketSize *= 2;
+        var byeCount = bracketSize - teams.Count;
+        rounds.Add(teams.Take(byeCount).Select(team => new MatchPair(team, null))
+            .Concat(PairOlympicRound(teams.Skip(byeCount).ToList())).ToList());
     }
-    else rounds.Add(PairSwissRound([], players));
+    else rounds.Add(PairSwissRound([], teams));
     return rounds.Take(format == "swiss" ? 1 : int.MaxValue).ToList();
 }
 
-static List<MatchPair> PairOlympicRound(List<string> players) => players.Chunk(2)
+static List<MatchPair> PairOlympicRound(List<string> teams) => teams.Chunk(2)
     .Select(pair => new MatchPair(pair[0], pair.Length > 1 ? pair[1] : null)).ToList();
 
-static List<MatchPair> PairSwissRound(List<MatchInfo> history, List<string> players)
+static List<MatchPair> PairSwissRound(List<MatchInfo> history, List<string> teams)
 {
-    var points = players.ToDictionary(player => player, _ => 0);
-    var opponents = players.ToDictionary(player => player, _ => new HashSet<string>());
-    var playersWithBye = new HashSet<string>();
+    var points = teams.ToDictionary(team => team, _ => 0);
+    var opponents = teams.ToDictionary(team => team, _ => new HashSet<string>());
+    var teamsWithBye = new HashSet<string>();
     foreach (var match in history)
     {
-        if (match.PlayerBId is null)
+        if (match.ParticipantBId is null)
         {
-            playersWithBye.Add(match.PlayerAId);
-            if (match.WinnerId == match.PlayerAId) points[match.PlayerAId]++;
+            teamsWithBye.Add(match.ParticipantAId);
+            if (match.WinnerId == match.ParticipantAId) points[match.ParticipantAId]++;
             continue;
         }
 
-        opponents[match.PlayerAId].Add(match.PlayerBId);
-        opponents[match.PlayerBId].Add(match.PlayerAId);
+        opponents[match.ParticipantAId].Add(match.ParticipantBId);
+        opponents[match.ParticipantBId].Add(match.ParticipantAId);
         if (match.WinnerId is not null) points[match.WinnerId]++;
     }
 
-    var remaining = players.OrderByDescending(player => points[player]).ThenBy(player => player).ToList();
+    var remaining = teams.OrderByDescending(team => points[team]).ThenBy(team => team).ToList();
     var pairs = new List<MatchPair>();
     if (remaining.Count % 2 != 0)
     {
-        var bye = remaining.LastOrDefault(player => !playersWithBye.Contains(player)) ?? remaining[^1];
+        var bye = remaining.LastOrDefault(team => !teamsWithBye.Contains(team)) ?? remaining[^1];
         pairs.Add(new MatchPair(bye, null));
         remaining.Remove(bye);
     }
@@ -295,7 +322,7 @@ static List<MatchPair> PairSwissRound(List<MatchInfo> history, List<string> play
     while (remaining.Count > 0)
     {
         var first = remaining[0];
-        var opponentIndex = remaining.FindIndex(1, player => !opponents[first].Contains(player));
+        var opponentIndex = remaining.FindIndex(1, team => !opponents[first].Contains(team));
         if (opponentIndex < 0) opponentIndex = 1;
         var second = remaining[opponentIndex];
         pairs.Add(new MatchPair(first, second));
@@ -305,10 +332,11 @@ static List<MatchPair> PairSwissRound(List<MatchInfo> history, List<string> play
     return pairs;
 }
 
-public sealed record MatchPair(string PlayerAId, string? PlayerBId);
-public sealed record MatchInfo(Guid Id, Guid TournamentId, int Round, string PlayerAId, string? PlayerBId,
-    int? ScoreA, int? ScoreB, string? WinnerId, string Status);
+public sealed record MatchPair(string TeamAId, string? TeamBId);
+public sealed record MatchInfo(Guid Id, Guid TournamentId, int Round, string ParticipantType,
+    string ParticipantAId, string? ParticipantBId, int? ScoreA, int? ScoreB, string? WinnerId, string Status);
 public sealed record AuthorizeManagerRequest(string UserId);
-public sealed record AddParticipantRequest(string? PlayerId);
-public sealed record CreateTournamentRequest(string? Name, string? Format, int MaxPlayers, int? RoundCount);
+public sealed record AddParticipantRequest(Guid? TeamId);
+public sealed record TeamInfo(Guid Id, string Name, string OwnerId, string[] Members);
+public sealed record CreateTournamentRequest(string? Name, string? Format, int MaxTeams, int? RoundCount);
 public partial class Program;
