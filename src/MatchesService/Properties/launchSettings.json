@@ -8,7 +8,9 @@
       "applicationUrl": "http://localhost:8084",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ConnectionStrings__Matches": "Host=localhost;Port=5432;Database=tournament_matches;Username=tournament;Password=tournament_dev"
+        "ConnectionStrings__Matches": "Host=localhost;Port=5432;Database=tournament_matches;Username=tournament;Password=tournament_dev",
+        "TournamentsService__BaseUrl": "http://localhost:8083/",
+        "Jwt__Key": "local-development-only-signing-key-not-for-production-12345"
       }
     }
   }

@@ -14,6 +14,8 @@ public sealed class TournamentsDbContext(DbContextOptions<TournamentsDbContext> 
             entity.HasKey(tournament => tournament.Id);
             entity.Property(tournament => tournament.Name).HasMaxLength(100).IsRequired();
             entity.Property(tournament => tournament.Format).HasMaxLength(20).IsRequired();
+            entity.Property(tournament => tournament.OwnerId).HasMaxLength(450).IsRequired();
+            entity.HasIndex(tournament => tournament.OwnerId);
             entity.Property(tournament => tournament.MaxPlayers).IsRequired();
             entity.Property(tournament => tournament.CreatedAt).IsRequired();
         });
@@ -33,6 +35,7 @@ public sealed class Tournament
     public Guid Id { get; set; }
     public required string Name { get; set; }
     public required string Format { get; set; }
+    public required string OwnerId { get; set; }
     public int MaxPlayers { get; set; }
     public int? RoundCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
