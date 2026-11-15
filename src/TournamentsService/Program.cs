@@ -4,6 +4,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using TournamentPlatform.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Tournaments")
@@ -15,6 +16,8 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
 builder.Services.AddDbContext<TournamentsDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddHttpClient("players", client => client.BaseAddress = new Uri(builder.Configuration["PlayersService:BaseUrl"] ?? "http://localhost:8082/"));
 builder.Services.AddHttpClient("matches", client => client.BaseAddress = new Uri(builder.Configuration["MatchesService:BaseUrl"] ?? "http://localhost:8084/"));
+builder.Services.AddHttpClient("self", client => client.BaseAddress = new Uri(builder.Configuration["TournamentsService:SelfBaseUrl"] ?? "http://localhost:8083/"));
+builder.Services.AddHostedService<TournamentsMatchCompletedConsumer>();
 var issuer = builder.Configuration["Jwt:Issuer"] ?? "TournamentPlatform.Identity";
 var audience = builder.Configuration["Jwt:Audience"] ?? "TournamentPlatform";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -339,4 +342,21 @@ public sealed record AuthorizeManagerRequest(string UserId);
 public sealed record AddParticipantRequest(Guid? TeamId);
 public sealed record TeamInfo(Guid Id, string Name, string OwnerId, string[] Members);
 public sealed record CreateTournamentRequest(string? Name, string? Format, int MaxTeams, int? RoundCount);
+
+public sealed class TournamentsMatchCompletedConsumer(
+    IConfiguration configuration,
+    ILogger<TournamentsMatchCompletedConsumer> logger,
+    IHttpClientFactory clients)
+    : MatchCompletedConsumer(configuration, logger, RabbitMqTopology.TournamentsQueue)
+{
+    protected override async Task HandleAsync(MatchCompletedEvent message, CancellationToken cancellationToken)
+    {
+        using var response = await clients.CreateClient("self").PostAsJsonAsync(
+            $"internal/tournaments/{message.TournamentId}/matches/{message.MatchId}/completed",
+            new { matchId = message.MatchId }, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"Tournaments Service returned {(int)response.StatusCode} for MatchCompleted.");
+    }
+}
+
 public partial class Program;

@@ -1,7 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+COPY src/Messaging/Messaging.csproj src/Messaging/
 COPY src/RatingService/RatingService.csproj src/RatingService/
 RUN dotnet restore src/RatingService/RatingService.csproj
+COPY src/Messaging/ src/Messaging/
 COPY src/RatingService/ src/RatingService/
 RUN dotnet publish src/RatingService/RatingService.csproj -c Release -o /app/publish --no-restore
 

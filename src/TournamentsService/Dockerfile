@@ -1,7 +1,9 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+COPY src/Messaging/Messaging.csproj src/Messaging/
 COPY src/TournamentsService/TournamentsService.csproj src/TournamentsService/
 RUN dotnet restore src/TournamentsService/TournamentsService.csproj
+COPY src/Messaging/ src/Messaging/
 COPY src/TournamentsService/ src/TournamentsService/
 RUN dotnet publish src/TournamentsService/TournamentsService.csproj -c Release -o /app/publish --no-restore
 

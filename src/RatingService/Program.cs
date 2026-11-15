@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Json;
+using TournamentPlatform.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Rating")
     ?? throw new InvalidOperationException("ConnectionStrings:Rating is required.");
 builder.Services.AddDbContext<RatingDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddHttpClient("self", client => client.BaseAddress = new Uri(builder.Configuration["RatingService:SelfBaseUrl"] ?? "http://localhost:8085/"));
+builder.Services.AddHostedService<RatingMatchCompletedConsumer>();
 
 var app = builder.Build();
 
@@ -122,4 +126,27 @@ public sealed class ProcessedRatingMatch
 {
     public Guid MatchId { get; set; }
     public DateTimeOffset ProcessedAt { get; set; }
+}
+
+public sealed class RatingMatchCompletedConsumer(
+    IConfiguration configuration,
+    ILogger<RatingMatchCompletedConsumer> logger,
+    IHttpClientFactory clients)
+    : MatchCompletedConsumer(configuration, logger, RabbitMqTopology.RatingQueue)
+{
+    protected override async Task HandleAsync(MatchCompletedEvent message, CancellationToken cancellationToken)
+    {
+        using var response = await clients.CreateClient("self").PostAsJsonAsync(
+            "internal/ratings/matches",
+            new
+            {
+                matchId = message.MatchId,
+                teamAId = message.TeamAId,
+                teamBId = message.TeamBId,
+                scoreA = message.ScoreA,
+                scoreB = message.ScoreB
+            }, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"Rating Service returned {(int)response.StatusCode} for MatchCompleted.");
+    }
 }

@@ -10,7 +10,11 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "ConnectionStrings__Matches": "Host=localhost;Port=5432;Database=tournament_matches;Username=tournament;Password=tournament_dev",
         "TournamentsService__BaseUrl": "http://localhost:8083/",
-        "Jwt__Key": "local-development-only-signing-key-not-for-production-12345"
+        "Jwt__Key": "local-development-only-signing-key-not-for-production-12345",
+        "RabbitMQ__Host": "localhost",
+        "RabbitMQ__Port": "5672",
+        "RabbitMQ__Username": "tournament",
+        "RabbitMQ__Password": "tournament_dev"
       }
     }
   }

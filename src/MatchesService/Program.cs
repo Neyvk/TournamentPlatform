@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using TournamentPlatform.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Matches")
@@ -13,7 +14,7 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
     throw new InvalidOperationException("Jwt:Key must contain at least 32 bytes.");
 builder.Services.AddDbContext<MatchesDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddHttpClient("tournaments", client => client.BaseAddress = new Uri(builder.Configuration["TournamentsService:BaseUrl"] ?? "http://localhost:8083/"));
-builder.Services.AddHttpClient("rating", client => client.BaseAddress = new Uri(builder.Configuration["RatingService:BaseUrl"] ?? "http://localhost:8085/"));
+builder.Services.AddSingleton<RabbitMqEventPublisher>();
 var issuer = builder.Configuration["Jwt:Issuer"] ?? "TournamentPlatform.Identity";
 var audience = builder.Configuration["Jwt:Audience"] ?? "TournamentPlatform";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -74,7 +75,8 @@ app.MapGet("/api/v1/matches/tournaments/{tournamentId:guid}", async (Guid tourna
         .OrderBy(match => match.Round).ToListAsync()));
 
 app.MapPut("/api/v1/matches/{matchId:guid}/result", async (
-    Guid matchId, SetMatchResultRequest request, HttpContext context, MatchesDbContext db, IHttpClientFactory clients) =>
+    Guid matchId, SetMatchResultRequest request, HttpContext context, MatchesDbContext db,
+    IHttpClientFactory clients, RabbitMqEventPublisher publisher, ILogger<Program> logger) =>
 {
     if (request.ScoreA < 0 || request.ScoreB < 0 || request.ScoreA == request.ScoreB)
         return Results.BadRequest(new { error = "Счёт должен быть неотрицательным и определять победителя." });
@@ -114,35 +116,15 @@ app.MapPut("/api/v1/matches/{matchId:guid}/result", async (
 
     try
     {
-        var response = await clients.CreateClient("tournaments")
-            .PostAsJsonAsync($"internal/tournaments/{match.TournamentId}/matches/{match.Id}/completed", new { matchId = match.Id });
-        if (!response.IsSuccessStatusCode)
-            return Results.Problem("Результат сохранён, но турнир пока не удалось продолжить. Повтори отправку того же результата.", statusCode: 503);
+        await publisher.PublishMatchCompletedAsync(new MatchCompletedEvent(
+            match.Id, match.TournamentId, match.ParticipantAId, match.ParticipantBId!,
+            match.ScoreA!.Value, match.ScoreB!.Value, match.WinnerId!, match.CompletedAt!.Value),
+            context.RequestAborted);
     }
-    catch (HttpRequestException)
+    catch (Exception exception)
     {
-        return Results.Problem("Результат сохранён, но сервис турниров сейчас недоступен. Повтори отправку того же результата.", statusCode: 503);
-    }
-
-    try
-    {
-        if (match.ParticipantType == "team")
-        {
-            var ratingResponse = await clients.CreateClient("rating").PostAsJsonAsync("internal/ratings/matches", new
-            {
-                matchId = match.Id,
-                teamAId = match.ParticipantAId,
-                teamBId = match.ParticipantBId,
-                scoreA = match.ScoreA,
-                scoreB = match.ScoreB
-            });
-            if (!ratingResponse.IsSuccessStatusCode)
-                return Results.Problem("Результат сохранён, но рейтинг не обновлён. Повтори отправку того же результата.", statusCode: 503);
-        }
-    }
-    catch (HttpRequestException)
-    {
-        return Results.Problem("Результат сохранён, но сервис рейтинга сейчас недоступен. Повтори отправку того же результата.", statusCode: 503);
+        logger.LogError(exception, "Could not publish MatchCompleted for match {MatchId}.", match.Id);
+        return Results.Problem("Результат сохранён, но событие не удалось отправить в RabbitMQ. Повтори отправку того же результата.", statusCode: 503);
     }
 
     return Results.Ok(match);

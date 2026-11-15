@@ -8,7 +8,12 @@
       "applicationUrl": "http://localhost:8085",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ConnectionStrings__Rating": "Host=localhost;Port=5432;Database=tournament_rating;Username=tournament;Password=tournament_dev"
+        "ConnectionStrings__Rating": "Host=localhost;Port=5432;Database=tournament_rating;Username=tournament;Password=tournament_dev",
+        "RatingService__SelfBaseUrl": "http://localhost:8085/",
+        "RabbitMQ__Host": "localhost",
+        "RabbitMQ__Port": "5672",
+        "RabbitMQ__Username": "tournament",
+        "RabbitMQ__Password": "tournament_dev"
       }
     }
   }
