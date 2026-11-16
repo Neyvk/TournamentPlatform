@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TournamentPlatform</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <strong>TournamentPlatform</strong>
+    <div id="account"></div>
+  </header>
+  <main>
+    <nav id="navigation" hidden>
+      <button data-view="profile">Игроки</button>
+      <button data-view="teams">Команды</button>
+      <button data-view="tournaments">Турниры</button>
+      <button data-view="matches">Матчи</button>
+      <button data-view="rating">Рейтинг</button>
+    </nav>
+    <p id="message" role="status" hidden></p>
+
+    <section id="auth-view">
+      <h1>Вход</h1>
+      <form id="login-form" class="form">
+        <label>Почта или никнейм<input name="login" required autocomplete="username"></label>
+        <label>Пароль<input name="password" type="password" required autocomplete="current-password"></label>
+        <button>Войти</button>
+      </form>
+      <details>
+        <summary>Регистрация</summary>
+        <form id="register-form" class="form">
+          <label>Никнейм<input name="nickname" required maxlength="80"></label>
+          <label>Почта<input name="email" type="email" required autocomplete="email"></label>
+          <label>Пароль<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+          <button>Зарегистрироваться</button>
+        </form>
+      </details>
+    </section>
+
+    <section id="profile-view" hidden>
+      <h1>Игроки</h1>
+      <div id="players-list" class="list"></div>
+    </section>
+
+    <section id="teams-view" hidden>
+      <h1>Команды</h1>
+      <form id="team-form" class="inline-form">
+        <label>Название команды<input name="name" required maxlength="80"></label>
+        <button>Создать команду</button>
+      </form>
+      <div id="teams-list" class="list"></div>
+    </section>
+
+    <section id="tournaments-view" hidden>
+      <h1>Турниры</h1>
+      <form id="tournament-form" class="form grid-form">
+        <label>Название<input name="name" required maxlength="100"></label>
+        <label>Формат
+          <select name="format">
+            <option value="olympic">Олимпийская система</option>
+            <option value="round_robin">Круговая система</option>
+            <option value="swiss">Швейцарская система</option>
+          </select>
+        </label>
+        <label>Максимум команд<input name="maxTeams" type="number" min="2" max="128" value="8" required></label>
+        <label id="round-count-field" hidden>Количество раундов<input name="roundCount" type="number" min="1" max="20" value="3"></label>
+        <button>Создать турнир</button>
+      </form>
+      <div id="tournaments-list" class="list"></div>
+    </section>
+
+    <section id="matches-view" hidden>
+      <h1>Матчи</h1>
+      <label class="filter">Турнир<select id="match-tournament"></select></label>
+      <div id="matches-list" class="list"></div>
+    </section>
+
+    <section id="rating-view" hidden>
+      <h1>Рейтинг команд</h1>
+      <form id="rating-form" class="inline-form">
+        <label>Команда<select name="teamId"></select></label>
+        <button>Показать рейтинг</button>
+      </form>
+      <div id="team-rating"></div>
+      <h2>Таблица рейтинга</h2>
+      <div id="leaderboard" class="list"></div>
+    </section>
+  </main>
+</body>
+</html>
