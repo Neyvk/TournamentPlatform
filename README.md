@@ -111,8 +111,6 @@ GET http://localhost:8080/health
 - `GET /api/v1/ratings/teams/{teamId}` — получить рейтинг команды;
 - `GET /api/v1/ratings/leaderboard?limit=50` — таблица командных рейтингов.
 
-Для защищённых запросов передавай заголовок `Authorization: Bearer <accessToken>` с токеном из `/api/v1/auth/login`.
-
 ## Реализованная функциональность
 
 ### Уже работает
