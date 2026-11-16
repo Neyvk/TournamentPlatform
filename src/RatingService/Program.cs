@@ -14,7 +14,9 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     await using var scope = app.Services.CreateAsyncScope();
-    await scope.ServiceProvider.GetRequiredService<RatingDbContext>().Database.EnsureCreatedAsync();
+    var db = scope.ServiceProvider.GetRequiredService<RatingDbContext>();
+    await db.Database.EnsureCreatedAsync();
+    await RatingDemoDataSeeder.EnsureAsync(db);
 }
 
 app.MapGet("/health", () => Results.Ok(new { service = "rating", status = "healthy" }));

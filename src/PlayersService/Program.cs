@@ -56,6 +56,7 @@ if (app.Environment.IsDevelopment())
             CONSTRAINT "PK_TeamMembers" PRIMARY KEY ("TeamId", "UserId")
         );
         """);
+    await DemoDataSeeder.EnsureAsync(db);
 }
 
 app.UseAuthentication();
